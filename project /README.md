@@ -70,9 +70,6 @@ After completing the above steps, you should be ready to run the program, as spe
 * Requests - http://docs.python-requests.org/en/master/
 * Matplotlib - http://www.matplotlib.org
 
-## Author
-
-* **Syed Peer**
 
 ## Acknowledgments
 
