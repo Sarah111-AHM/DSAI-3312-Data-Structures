@@ -1,42 +1,35 @@
-"""
-text_processor.py
-معالجة النص وتخزينه في هياكل بيانات مناسبة
-"""
-
+# text_processor.py
 from collections import Counter
-from utils import clean_text, split_sentences
+from typing import List, Dict, Tuple, Optional
+import utils
 
 class TextProcessor:
-    def __init__(self, raw_text):
+    def __init__(self, raw_text: str):
         self.raw_text = raw_text
-        self.clean_text = clean_text(raw_text)
-        # قائمة بكل الكلمات
-        self.words = self.clean_text.split()
-        # قائمة الجمل (كل جملة نص)
-        self.sentences = split_sentences(self.clean_text)
-        # قائمة الجمل حيث كل جملة هي قائمة كلمات (للبحث الدقيق)
-        self.sentence_words = [s.split() for s in self.sentences]
+        self.clean_text = utils.clean_text(raw_text)
+        self.words: List[str] = self.clean_text.split()
+        self.sentences: List[str] = utils.split_sentences(self.clean_text)
+        self.sentence_words: List[List[str]] = [s.split() for s in self.sentences]
 
-        # إحصائيات أولية باستخدام Counter
-        self.word_counts = Counter(self.words)
-        self.unique_words = set(self.words)
-        # عد الحروف بدون مسافات
+        # إحصائيات
+        self.word_counts: Counter = Counter(self.words)
+        self.unique_words: set = set(self.words)
         text_no_spaces = self.clean_text.replace(' ', '')
-        self.char_counts = Counter(text_no_spaces)
+        self.char_counts: Counter = Counter(text_no_spaces)
 
-    def get_word_frequencies(self, top_n=None):
-        """إرجاع ترددات الكلمات. إذا أعطي top_n يرجع أكثر n تكراراً."""
-        if top_n:
-            return self.word_counts.most_common(top_n)
-        return dict(self.word_counts)
+    def get_word_stats(self) -> Tuple[int, int]:
+        """إرجاع (إجمالي الكلمات, الكلمات الفريدة)"""
+        return len(self.words), len(self.unique_words)
 
-    def get_char_frequencies(self):
+    def get_top_words(self, n: int = 10) -> List[Tuple[str, int]]:
+        return self.word_counts.most_common(n)
+
+    def get_char_stats(self) -> Dict[str, int]:
         return dict(self.char_counts)
 
-    def search_word(self, word):
+    def search_word(self, word: str) -> List[Tuple[int, int]]:
         """
-        البحث عن كلمة في النص.
-        يعيد قائمة tuples (رقم الجملة, رقم الكلمة في الجملة) (تبدأ من 1)
+        البحث عن كلمة. يرجع قائمة (رقم الجملة, رقم الكلمة في الجملة)
         """
         word = word.lower()
         results = []
@@ -46,16 +39,15 @@ class TextProcessor:
                     results.append((sent_idx + 1, word_idx + 1))
         return results
 
-    def replace_word(self, old, new):
+    def replace_word(self, old: str, new: str) -> bool:
         """
-        استبدال كل تكرارات old بكلمة new في جميع الهياكل.
-        تعيد True إذا تم أي استبدال، False إذا لم توجد الكلمة.
+        استبدال كل تكرارات old بكلمة new.
+        تُعيد True إذا تم الاستبدال.
         """
         old = old.lower()
         new = new.lower()
         replaced = False
 
-        # استبدال في قائمة الكلمات المسطحة
         for i, w in enumerate(self.words):
             if w == old:
                 self.words[i] = new
@@ -64,18 +56,12 @@ class TextProcessor:
         if not replaced:
             return False
 
-        # إعادة بناء النص النظيف من قائمة الكلمات المحدثة
+        # إعادة بناء النص والهياكل الأخرى
         self.clean_text = ' '.join(self.words)
-
-        # إعادة بناء الجمل
-        self.sentences = split_sentences(self.clean_text)
+        self.sentences = utils.split_sentences(self.clean_text)
         self.sentence_words = [s.split() for s in self.sentences]
-
-        # تحديث الإحصائيات
         self.word_counts = Counter(self.words)
         self.unique_words = set(self.words)
-
-        # تحديث عد الحروف
         text_no_spaces = self.clean_text.replace(' ', '')
         self.char_counts = Counter(text_no_spaces)
 
