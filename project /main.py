@@ -1,173 +1,181 @@
-"""
-main.py
-النقطة الرئيسية للبرنامج: واجهة تفاعلية تعرض القائمة وتنفذ الخيارات
-"""
+# main.py
+import sys
+from pathlib import Path
+from rich.console import Console
+from rich.table import Table
+from rich.prompt import Prompt, Confirm
+from rich.panel import Panel
+from rich import print as rprint
 
-import os
-from text_processor import TextProcessor
-from features import Trie, NGramPredictor, SpellChecker, SentimentAnalyzer
 import utils
+import config
+from text_processor import TextProcessor
+from features.autocomplete import AutocompleteFeature
+from features.prediction import NextWordPredictionFeature
+from features.spell import SpellSuggestionFeature
+from features.sentiment import SentimentFeature
 
-def load_initial_text():
-    """تطلب من المستخدم إدخال النص إما مباشرة أو من ملف."""
-    print("=== Smart Text Analyzer ===")
+console = Console()
+
+def load_text_interactive() -> str:
+    """تطلب من المستخدم إدخال النص (مباشر أو ملف) وتعيد النص الخام."""
+    console.print(Panel.fit("📄 Smart Text Analyzer", style="bold blue"))
     while True:
-        choice = input("هل تريد تحميل النص من ملف (f) أم إدخاله مباشرة (d)؟ [f/d]: ").strip().lower()
-        if choice == 'f':
-            path = input("أدخل مسار الملف: ").strip()
-            if not os.path.exists(path):
-                print("الملف غير موجود. حاول مرة أخرى.")
+        choice = Prompt.ask(
+            "Load text from [f]ile or enter [d]irectly?",
+            choices=["f", "d"]
+        )
+        if choice == "f":
+            file_path = Prompt.ask("Enter file path")
+            path = Path(file_path)
+            if not path.exists():
+                console.print("[red]File not found.[/red]")
                 continue
             try:
-                raw_text = utils.load_file(path)
-                print("تم تحميل النص من الملف بنجاح.")
-                return raw_text
+                raw = utils.load_file(path)
+                console.print(f"[green]Loaded {len(raw)} characters from file.[/green]")
+                return raw
             except Exception as e:
-                print(f"خطأ في قراءة الملف: {e}")
-        elif choice == 'd':
-            print("أدخل النص (عند الانتهاء اكتب $$END_TEXT$$ في سطر جديد):")
+                console.print(f"[red]Error reading file: {e}[/red]")
+        else:
+            console.print("Enter your text (type '$$END$$' on a new line to finish):")
             lines = []
             while True:
                 line = input()
-                if line.strip() == "$$END_TEXT$$":
+                if line.strip() == "$$END$$":
                     break
                 lines.append(line)
-            raw_text = '\n'.join(lines)
-            return raw_text
-        else:
-            print("اختيار غير صالح، حاول مرة أخرى.")
+            return "\n".join(lines)
 
 def display_menu():
-    print("\n--- القائمة الرئيسية ---")
-    print("1. إحصائيات الكلمات")
-    print("2. إحصائيات الحروف")
-    print("3. بحث عن كلمة")
-    print("4. استبدال كلمة")
-    print("5. الإكمال التلقائي (Autocomplete)")
-    print("6. توقع الكلمة التالية")
-    print("7. اقتراح تصحيح إملائي")
-    print("8. تحليل المشاعر")
-    print("0. خروج")
-    return input("اختر رقم الخيار: ").strip()
+    console.print("\n[bold cyan]--- Main Menu ---[/bold cyan]")
+    menu_items = [
+        "1. Word Statistics",
+        "2. Character Statistics",
+        "3. Search Word",
+        "4. Replace Word",
+        "5. Autocomplete (prefix)",
+        "6. Next Word Prediction",
+        "7. Spell Suggestion",
+        "8. Sentiment Analysis",
+        "0. Exit"
+    ]
+    for item in menu_items:
+        console.print(item)
+    return Prompt.ask("Choose an option", choices=[str(i) for i in range(9)])
 
 def main():
-    raw_text = load_initial_text()
+    raw_text = load_text_interactive()
     processor = TextProcessor(raw_text)
 
-    # بناء الميزات الذكية باستخدام بيانات المعالج
-    trie = Trie()
-    for w in processor.unique_words:
-        trie.insert(w)
-
-    predictor = NGramPredictor(processor.words)
-
-    spell_checker = SpellChecker(processor.unique_words)
-
-    # تأكد من وجود ملف lexicon
-    lexicon_path = 'data/sentiment_lexicon.csv'
-    if not os.path.exists(lexicon_path):
-        print("تحذير: ملف lexicon غير موجود. سيتم إنشاء ملف افتراضي.")
-        # يمكن إنشاء ملف بسيط
-        os.makedirs('data', exist_ok=True)
-        with open(lexicon_path, 'w', encoding='utf-8') as f:
-            f.write("good,positive\nbad,negative\nhappy,positive\nsad,negative\n")
-    sentiment = SentimentAnalyzer(lexicon_path)
+    # بناء الميزات الذكية
+    autocomplete = AutocompleteFeature(processor.unique_words)
+    predictor = NextWordPredictionFeature(processor.words)
+    spell = SpellSuggestionFeature(processor.unique_words)
+    sentiment = SentimentFeature(config.SENTIMENT_LEXICON_PATH)
 
     while True:
         choice = display_menu()
 
-        if choice == '0':
-            print("وداعاً!")
+        if choice == "0":
+            console.print("[bold green]Goodbye![/bold green]")
             break
 
-        elif choice == '1':  # إحصائيات الكلمات
-            total = len(processor.words)
-            unique = len(processor.unique_words)
-            print(f"\nإجمالي عدد الكلمات: {total}")
-            print(f"عدد الكلمات الفريدة: {unique}")
-            top = input("عرض أكثر الكلمات تكراراً؟ أدخل عدداً (أو اضغط Enter للتخطي): ").strip()
-            if top.isdigit():
-                top_n = int(top)
-                freqs = processor.get_word_frequencies(top_n)
-                for word, count in freqs:
-                    print(f"  {word}: {count}")
+        elif choice == "1":  # Word Statistics
+            total, unique = processor.get_word_stats()
+            console.print(f"\n[underline]Word Statistics[/underline]")
+            console.print(f"Total words: {total}")
+            console.print(f"Unique words: {unique}")
+            top_n = Prompt.ask("Show top N frequent words? (Enter number, or leave blank to skip)", default="")
+            if top_n.isdigit():
+                top = processor.get_top_words(int(top_n))
+                table = Table(title=f"Top {top_n} Words")
+                table.add_column("Word", style="cyan")
+                table.add_column("Frequency", style="magenta")
+                for word, count in top:
+                    table.add_row(word, str(count))
+                console.print(table)
 
-        elif choice == '2':  # إحصائيات الحروف
-            chars = processor.get_char_frequencies()
-            total_chars = sum(chars.values())
-            print(f"\nإجمالي عدد الحروف (بدون مسافات): {total_chars}")
-            print("تكرار كل حرف:")
+        elif choice == "2":  # Character Statistics
+            chars = processor.get_char_stats()
+            total = sum(chars.values())
+            console.print(f"\n[underline]Character Statistics[/underline]")
+            console.print(f"Total characters (no spaces): {total}")
+            table = Table(title="Character Frequencies")
+            table.add_column("Character", style="cyan")
+            table.add_column("Count", style="magenta")
             for ch, count in sorted(chars.items()):
-                print(f"  '{ch}': {count}")
+                table.add_row(repr(ch), str(count))
+            console.print(table)
 
-        elif choice == '3':  # بحث عن كلمة
-            word = input("أدخل الكلمة للبحث عنها: ").strip()
+        elif choice == "3":  # Search Word
+            word = Prompt.ask("Enter word to search")
             results = processor.search_word(word)
             if results:
-                print(f"تم العثور على '{word}' في {len(results)} موضع:")
+                console.print(f"Found '{word}' in {len(results)} positions:")
                 for sent, wpos in results:
-                    print(f"  الجملة {sent}, الكلمة رقم {wpos}")
+                    console.print(f"  Sentence {sent}, word #{wpos}")
             else:
-                print("لم يتم العثور على الكلمة.")
+                console.print("[yellow]Word not found.[/yellow]")
 
-        elif choice == '4':  # استبدال كلمة
-            old = input("أدخل الكلمة المراد استبدالها: ").strip()
-            new = input("أدخل الكلمة الجديدة: ").strip()
-            confirm = input(f"هل أنت متأكد من استبدال كل '{old}' بـ '{new}'؟ (نعم/لا): ").strip().lower()
-            if confirm in ['نعم', 'y', 'yes']:
-                success = processor.replace_word(old, new)
-                if success:
-                    print("تم الاستبدال بنجاح.")
-                    # تحديث الهياكل الذكية (أعد بناءها)
-                    trie = Trie()
-                    for w in processor.unique_words:
-                        trie.insert(w)
-                    predictor = NGramPredictor(processor.words)
-                    spell_checker = SpellChecker(processor.unique_words)
+        elif choice == "4":  # Replace Word
+            old = Prompt.ask("Word to replace")
+            new = Prompt.ask("Replace with")
+            if Confirm.ask(f"Replace all occurrences of '{old}' with '{new}'?"):
+                if processor.replace_word(old, new):
+                    console.print("[green]Replacement successful.[/green]")
+                    # تحديث الميزات الذكية (أعد بناءها)
+                    autocomplete = AutocompleteFeature(processor.unique_words)
+                    predictor = NextWordPredictionFeature(processor.words)
+                    spell = SpellSuggestionFeature(processor.unique_words)
                 else:
-                    print("الكلمة غير موجودة في النص.")
+                    console.print("[red]Word not found in text.[/red]")
             else:
-                print("تم إلغاء العملية.")
+                console.print("[yellow]Cancelled.[/yellow]")
 
-        elif choice == '5':  # Autocomplete
-            prefix = input("أدخل بادئة الكلمة: ").strip().lower()
-            suggestions = trie.autocomplete(prefix)
+        elif choice == "5":  # Autocomplete
+            prefix = Prompt.ask("Enter prefix")
+            suggestions = autocomplete.get_suggestions(prefix)
             if suggestions:
-                print("اقتراحات:", ', '.join(suggestions[:10]))
+                console.print("Suggestions: " + ", ".join(suggestions))
             else:
-                print("لا توجد اقتراحات.")
+                console.print("[yellow]No suggestions.[/yellow]")
 
-        elif choice == '6':  # Next word prediction
-            word = input("أدخل كلمة: ").strip().lower()
+        elif choice == "6":  # Next Word Prediction
+            word = Prompt.ask("Enter a word")
             predictions = predictor.predict(word)
             if predictions:
-                print("الكلمات التالية المحتملة:")
+                console.print("Next word probabilities:")
                 for w, count in predictions:
-                    print(f"  {w} (تكررت {count} مرة)")
+                    console.print(f"  {w} (seen {count} times)")
             else:
-                print("لا توجد توقعات.")
+                console.print("[yellow]No predictions.[/yellow]")
 
-        elif choice == '7':  # Spell suggestion
-            word = input("أدخل كلمة للتدقيق الإملائي: ").strip().lower()
-            suggestions = spell_checker.suggest(word)
+        elif choice == "7":  # Spell Suggestion
+            word = Prompt.ask("Enter word to check")
+            suggestions = spell.suggest(word)
             if suggestions:
-                print("اقتراحات:", ', '.join(suggestions))
+                console.print("Did you mean: " + ", ".join(suggestions))
             else:
-                print("الكلمة صحيحة أو لا توجد اقتراحات.")
+                console.print("[green]Word is correct (or no suggestions).[/green]")
 
-        elif choice == '8':  # Sentiment analysis
-            sentence = input("أدخل جملة لتحليل مشاعرها (أو اضغط Enter لتحليل النص كاملاً): ").strip()
+        elif choice == "8":  # Sentiment
+            sentence = Prompt.ask("Enter a sentence (or leave empty for full text)", default="")
             if not sentence:
                 text_to_analyze = processor.clean_text
             else:
                 text_to_analyze = sentence
             mood = sentiment.analyze(text_to_analyze)
-            print(f"المشاعر المتوقعة: {mood}")
+            console.print(f"Sentiment: [bold]{mood.upper()}[/bold]")
 
         else:
-            print("اختيار غير صالح، حاول مرة أخرى.")
+            console.print("[red]Invalid choice.[/red]")
 
-        input("\nاضغط Enter للعودة إلى القائمة...")
+        input("\nPress Enter to continue...")
 
-if __name__ == '__main__':
-    main()
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Interrupted. Exiting...[/yellow]")
+        sys.exit(0)
